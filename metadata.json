@@ -1,0 +1,5 @@
+{
+  "name": "Anaconda 3D: The Great Hunt",
+  "description": "A realistic 3D snake game where you control an anaconda hunting mice. Reach 5000 points to win!",
+  "requestFramePermissions": []
+}
