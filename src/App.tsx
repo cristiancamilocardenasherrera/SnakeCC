@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Environment, Float, Text, Stars, Sparkles } from '@react-three/drei';
 import * as THREE from 'three';
-import { Heart, Trophy, MousePointer2, RefreshCw, Play, Pause } from 'lucide-react';
+import { Heart, Trophy, MousePointer2, RefreshCw, Play, Pause, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getJungleCommentary, getJungleFact } from './services/geminiService';
 
 // Constants
 const GRID_SIZE = 20;
@@ -128,8 +129,20 @@ export default function App() {
   const [lives, setLives] = useState(INITIAL_LIVES);
   const [gameState, setGameState] = useState<GameState>('START');
   const [highScore, setHighScore] = useState(0);
+  const [aiMessage, setAiMessage] = useState<string>("Welcome to the Great Hunt.");
+  const [jungleFact, setJungleFact] = useState<string>("");
 
   const directionRef = useRef<Point>(INITIAL_DIRECTION);
+
+  const updateAiMessage = async (event: string, currentScore: number) => {
+    const msg = await getJungleCommentary(event, currentScore);
+    setAiMessage(msg);
+  };
+
+  const fetchJungleFact = async () => {
+    const fact = await getJungleFact();
+    setJungleFact(fact);
+  };
 
   const generateFood = useCallback((currentSnake: Point[]) => {
     let newFood;
@@ -152,6 +165,7 @@ export default function App() {
     setScore(0);
     setLives(INITIAL_LIVES);
     setGameState('PLAYING');
+    updateAiMessage("Game Started", 0);
   };
 
   const handleDeath = () => {
@@ -160,10 +174,13 @@ export default function App() {
       setSnake(INITIAL_SNAKE);
       setDirection(INITIAL_DIRECTION);
       directionRef.current = INITIAL_DIRECTION;
+      updateAiMessage("Lost a life", score);
     } else {
       setLives(0);
       setGameState('GAMEOVER');
       if (score > highScore) setHighScore(score);
+      fetchJungleFact();
+      updateAiMessage("Game Over", score);
     }
   };
 
@@ -197,6 +214,12 @@ export default function App() {
         setScore(newScore);
         if (newScore >= WINNING_SCORE) {
           setGameState('WON');
+          updateAiMessage("Victory", newScore);
+        } else {
+          // Only update AI message every 500 points to avoid rate limits
+          if (newScore % 500 === 0) {
+            updateAiMessage("Ate a mouse", newScore);
+          }
         }
         setFood(generateFood(newSnake));
       } else {
@@ -225,7 +248,10 @@ export default function App() {
         case ' ':
           if (gameState === 'PLAYING') setGameState('PAUSED');
           else if (gameState === 'PAUSED') setGameState('PLAYING');
-          else if (gameState === 'START') setGameState('PLAYING');
+          else if (gameState === 'START') {
+            setGameState('PLAYING');
+            updateAiMessage("Game Started", 0);
+          }
           break;
       }
     };
@@ -307,16 +333,34 @@ export default function App() {
           </div>
         </div>
 
-        <div className="bg-black/40 backdrop-blur-md border border-white/10 p-4 rounded-2xl text-right">
-          <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Goal</p>
-          <p className="text-lg font-bold text-emerald-400">{WINNING_SCORE.toLocaleString()}</p>
-          <div className="w-32 h-1 bg-white/10 rounded-full mt-2 overflow-hidden">
-            <motion.div 
-              className="h-full bg-emerald-500"
-              initial={{ width: 0 }}
-              animate={{ width: `${(score / WINNING_SCORE) * 100}%` }}
-            />
+        <div className="flex flex-col items-end gap-2">
+          <div className="bg-black/40 backdrop-blur-md border border-white/10 p-4 rounded-2xl text-right">
+            <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Goal</p>
+            <p className="text-lg font-bold text-emerald-400">{WINNING_SCORE.toLocaleString()}</p>
+            <div className="w-32 h-1 bg-white/10 rounded-full mt-2 overflow-hidden">
+              <motion.div 
+                className="h-full bg-emerald-500"
+                initial={{ width: 0 }}
+                animate={{ width: `${(score / WINNING_SCORE) * 100}%` }}
+              />
+            </div>
           </div>
+
+          {/* AI Message Bubble */}
+          <AnimatePresence mode="wait">
+            <motion.div 
+              key={aiMessage}
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              className="max-w-[200px] bg-emerald-500/10 backdrop-blur-md border border-emerald-500/20 p-3 rounded-2xl flex gap-3 items-start"
+            >
+              <MessageSquare className="w-4 h-4 text-emerald-400 shrink-0 mt-1" />
+              <p className="text-xs italic text-emerald-100/80 leading-relaxed font-medium">
+                "{aiMessage}"
+              </p>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 
@@ -342,7 +386,10 @@ export default function App() {
                   <h1 className="text-4xl font-black mb-2 italic uppercase tracking-tighter">Anaconda 3D</h1>
                   <p className="text-zinc-400 mb-8">Hunt the mice, grow your length, and reach 5000 points to claim the jungle.</p>
                   <button 
-                    onClick={() => setGameState('PLAYING')}
+                    onClick={() => {
+                      setGameState('PLAYING');
+                      updateAiMessage("Game Started", 0);
+                    }}
                     className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 pointer-events-auto"
                   >
                     START HUNTING <Play className="w-5 h-5 fill-black" />
@@ -375,7 +422,15 @@ export default function App() {
                     <RefreshCw className="text-rose-400 w-10 h-10" />
                   </div>
                   <h2 className="text-4xl font-black mb-2 italic uppercase tracking-tighter text-rose-500">Game Over</h2>
-                  <p className="text-zinc-400 mb-2">The jungle was too much for you this time.</p>
+                  <p className="text-zinc-400 mb-4">The jungle was too much for you this time.</p>
+                  
+                  {jungleFact && (
+                    <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-4 mb-6">
+                      <p className="text-[10px] uppercase tracking-widest text-emerald-400 font-black mb-1">Jungle Wisdom</p>
+                      <p className="text-sm italic text-emerald-100/70 leading-relaxed">"{jungleFact}"</p>
+                    </div>
+                  )}
+
                   <div className="bg-black/40 rounded-2xl p-4 mb-8 flex justify-around">
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold">Final Score</p>
